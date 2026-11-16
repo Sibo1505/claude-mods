@@ -10,6 +10,11 @@
       "name": "mod-manager",
       "source": "./manager",
       "description": "Say \"install mods a, b\" in any session: Claude installs, updates or removes mods from this store the way each mod's README describes."
+    },
+    {
+      "name": "limit-meter",
+      "source": "./mods/limit-meter",
+      "description": "Shows your 5-hour and weekly usage limits and the context fill under the prompt, with colored bars and the time until each limit resets."
     }
   ]
 }
