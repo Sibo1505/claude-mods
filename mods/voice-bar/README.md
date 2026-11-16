@@ -23,7 +23,7 @@ Adds four buttons above the prompt. Click them with the mouse, or press `ctrl+x`
 | Button | What it does |
 |---|---|
 | **🎤 Speak** | Starts a recording in [Handy](https://handy.computer). The button turns green and becomes **■ Stop**. Click it again to stop: Handy writes what you said into the prompt, and the button is **Speak** again. If Handy cannot record (not running, not found), the button turns red for a moment and a message says why. |
-| **⏎** | Sends what is in the prompt, like Enter. With an empty prompt it turns red for a moment. |
+| **⏎** | Sends what is in the prompt, like Enter. With an empty prompt it turns red for a moment. Claude Code marks a message a mod sends as *Prompt from the voice-bar plugin*, so Claude knows it came through the mod; no mod can send as if you typed it. Press Enter instead if you want the plain look. |
 | **●** | Status light: green when Handy runs, grey when it is off, red when something is wrong. Click it for a message that says what is going on. |
 | **⏻** | Power switch for Handy: green when it runs, white when it is off. Click to start or quit Handy. |
 
@@ -43,7 +43,7 @@ What the mod hooks and calls, as `claude plugin validate` reports it:
 - Files: checks whether Handy's program file exists in its usual install folders
 - Environment: reads `OS`, `LOCALAPPDATA` and `ProgramFiles` to find Handy
 - Network: none. Handy works offline; your voice never leaves your computer.
-- Microphone: only Handy records, and only after you click **Speak** (or use Handy's own shortcut)
+- Microphone: only Handy records, and only after you click **Speak** (or use Handy's own shortcut). Handy itself may keep recordings and a history in its own app folder; that is set in Handy's settings, not by this mod.
 - Blocks tool calls: no
 - Allows tool calls: no
 
