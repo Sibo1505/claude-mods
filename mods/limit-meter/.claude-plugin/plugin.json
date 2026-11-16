@@ -1,0 +1,23 @@
+{
+  "name": "limit-meter",
+  "version": "0.1.0",
+  "description": "Shows your 5-hour and weekly usage limits and the context fill under the prompt, with colored bars and the time until each limit resets.",
+  "author": {
+    "name": "Sibo1505",
+    "url": "https://github.com/Sibo1505"
+  },
+  "homepage": "https://github.com/Sibo1505/claude-mods",
+  "repository": "https://github.com/Sibo1505/claude-mods",
+  "license": "MIT",
+  "keywords": ["usage", "limits", "status"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "language": {
+      "type": "string",
+      "title": "Language",
+      "description": "Labels and time units: en (5h, Week, Context, d/h/min) or de (5h, Woche, Kontext, T/h/min).",
+      "default": "en",
+      "options": ["en", "de"]
+    }
+  }
+}
