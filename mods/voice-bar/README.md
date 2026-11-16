@@ -33,7 +33,7 @@ Handy's own shortcut (default `ctrl+space`) keeps working as before. The mod onl
 
 What the mod hooks and calls, as `claude plugin validate` reports it:
 
-- Hooks: `session.start`, `prompt.change`, `ui.render` (only its own row above the prompt)
+- Hooks: `session.start`, `prompt.edit` (only notices a paste while a recording runs; otherwise one quick check per key), `prompt.change`, `ui.render` (only its own row above the prompt)
 - Calls: `$.process.run`, `$.env.get`, `$.fs.exists`, `$.prompt.read`, `$.prompt.fill`, `$.prompt.submit`, `$.ui.toast`, `$.clock.after`, `$.clock.sleep`, `$.state.get`, `$.state.set`, `$.ui.resolve`
 - Processes, only when you click a button or once when a session starts:
   - Handy itself: `handy --toggle-transcription` (start or stop a recording)

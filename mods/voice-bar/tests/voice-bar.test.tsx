@@ -91,7 +91,7 @@ test('Speak starts a recording, the button turns into Stop, Stop ends it', async
   }
 })
 
-test('Handy pasting the text ends the recording state', async ($, on) => {
+test('text another plugin puts in the prompt ends the recording state', async ($, on) => {
   fakeComputer(on, true)
   on('prompt.change', (_, e) => e)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
@@ -181,5 +181,44 @@ test('the status dot explains the state', async ($, on) => {
 
   await ui.press({ key: 'status' })
   expect(toasts.at(-1)).toBe('Handy is ready. Press Speak to dictate.')
+  await ui.unmount()
+})
+
+test('a paste ends the recording state (Handy stopped by its own shortcut); typing does not', async ($, on) => {
+  fakeComputer(on, true)
+  on('prompt.edit', (_, e) => ({
+    text: e.text.slice(0, e.start) + e.inputText + e.text.slice(e.end),
+    cursor: e.start + e.inputText.length,
+  }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  // The kit raises prompt.edit like the engine; its typings only list a mod's calls.
+  const raise = $.prompt as unknown as { edit: (e: unknown) => Promise<unknown> }
+
+  await ui.press({ key: 'speak' })
+  expect((await ui.find({ key: 'speak' }))?.text).toContain('Stop')
+
+  // A key typed while Handy listens: still recording.
+  await raise.edit({
+    origin: { kind: 'composer' },
+    key: { key: 'a' },
+    text: '',
+    cursor: 0,
+    start: 0,
+    end: 0,
+    inputText: 'a',
+  })
+  expect((await ui.find({ key: 'speak' }))?.text).toContain('Stop')
+
+  // Handy's paste: an edit with no key.
+  await raise.edit({
+    origin: { kind: 'composer' },
+    text: 'a',
+    cursor: 1,
+    start: 1,
+    end: 1,
+    inputText: ' Hello from Handy',
+  })
+  expect((await ui.find({ key: 'speak' }))?.text).toContain('Speak')
   await ui.unmount()
 })

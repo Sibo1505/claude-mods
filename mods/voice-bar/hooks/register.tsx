@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { HandyHealth } from '../types'
+import type { HandyHealth, VoicePhase } from '../types'
 import {
   detectOs,
   findHandy,
@@ -34,6 +34,15 @@ const MESSAGES = {
 // The configured path, set by `register` (a reload sets it again).
 let configuredPath = ''
 
+// A copy of `phase` for the per-keystroke check in `prompt.edit`, so a key
+// costs one boolean test and no state read. Kept in step by `setPhase`.
+let isRecordingNow = false
+
+async function setPhase($: EngineInterface, next: VoicePhase): Promise<void> {
+  isRecordingNow = next === 'recording'
+  await update($, phase, () => next)
+}
+
 type Handy = { os: Os; path: string | undefined }
 
 async function locate($: EngineInterface): Promise<Handy> {
@@ -50,7 +59,7 @@ async function refresh($: EngineInterface): Promise<boolean> {
   }
   const running = await isRunning($, os)
   await update($, health, () => (running ? 'running' : 'off') as HandyHealth)
-  if (!running) await update($, phase, () => 'idle' as const)
+  if (!running) await setPhase($, 'idle')
   return running
 }
 
@@ -72,7 +81,7 @@ async function speak($: EngineInterface): Promise<void> {
   }
   if (!(await isRunning($, os))) {
     await update($, health, () => 'off' as HandyHealth)
-    await update($, phase, () => 'idle' as const)
+    await setPhase($, 'idle')
     return fail($, 'speak', MESSAGES.off)
   }
 
@@ -90,7 +99,7 @@ async function speak($: EngineInterface): Promise<void> {
 
   await update($, health, () => 'running' as HandyHealth)
   const now = await read($, phase)
-  await update($, phase, () => (now === 'recording' ? 'idle' : 'recording'))
+  await setPhase($, now === 'recording' ? 'idle' : 'recording')
 }
 
 /** ⏎: send what is in the prompt box, as Enter would. */
@@ -128,7 +137,7 @@ async function power($: EngineInterface): Promise<void> {
   }
   if (await isRunning($, os)) {
     await stopHandy($, os)
-    await update($, phase, () => 'idle' as const)
+    await setPhase($, 'idle')
   } else {
     await startHandy($, os, path)
   }
@@ -142,14 +151,22 @@ export const register: Register = (on, options) => {
   // Learn once at start whether Handy runs (one quick process list, no polling).
   on('session.start', async ($, e, next) => {
     const started = await next(e)
+    isRecordingNow = (await read($, phase)) === 'recording'
     void refresh($)
     return started
   })
 
   // Handy pastes the text when a recording ends, also one stopped with its own
-  // shortcut: then the button goes back to Speak.
+  // shortcut: then the button goes back to Speak. A paste reaches the prompt
+  // as an edit with no key; outside a recording this is one boolean check.
+  on('prompt.edit', ($, e, next) => {
+    if (isRecordingNow && e.key === undefined && e.inputText !== '') void setPhase($, 'idle')
+    return next(e)
+  })
+
+  // Text put into the prompt another way (a plugin, history) also ends it.
   on('prompt.change', async ($, e, next) => {
-    if ((await read($, phase)) === 'recording') await update($, phase, () => 'idle' as const)
+    if (isRecordingNow) await setPhase($, 'idle')
     return next(e)
   })
 
