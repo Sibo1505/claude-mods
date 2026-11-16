@@ -1,8 +1,14 @@
 import { atom, read, update } from 'claude-code'
-import type { Register, SessionContextUsage, SessionRateLimit } from 'claude-code'
+import type {
+  EngineInterface,
+  Register,
+  SessionContextUsage,
+  SessionRateLimit,
+  Timer,
+} from 'claude-code'
 
 import type { LimitSnapshot, LimitWindow } from '../types'
-import { buildSegments, hasFigures } from './format'
+import { buildSegments, hasFigures, needsSeconds } from './format'
 import type { Lang } from './format'
 
 const snapshot = atom({ plugin: 'limit-meter', key: 'snapshot' } as const, null, {
@@ -10,6 +16,7 @@ const snapshot = atom({ plugin: 'limit-meter', key: 'snapshot' } as const, null,
 })
 const now = atom({ plugin: 'limit-meter', key: 'now' } as const, 0)
 
+const SECOND = 1000
 const MINUTE = 60_000
 /** Used where the surface has not measured its width. */
 const DEFAULT_COLUMNS = 120
@@ -35,43 +42,59 @@ function toSnapshot(
   return result
 }
 
+// The clock behind the countdown. It ticks once a minute, and once a second
+// only while a limit is used up (then the row shows a live timer). Each tick
+// is one local state write: no model call, no tokens. These variables start
+// over on a reload, and session.start sets them again.
+let figures: LimitSnapshot | null = null
+let timer: Timer | undefined
+let interval = 0
+
+async function tick($: EngineInterface): Promise<void> {
+  const time = await $.clock.now()
+  await update($, now, () => time)
+  const wanted = needsSeconds(figures, time) ? SECOND : MINUTE
+  if (wanted !== interval) {
+    timer?.cancel()
+    interval = wanted
+    timer = $.clock.every(wanted, () => {
+      void tick($)
+    })
+  }
+}
+
+async function remember($: EngineInterface, next: LimitSnapshot): Promise<void> {
+  figures = next
+  await update($, snapshot, () => next)
+  await tick($)
+}
+
 export const register: Register = (on, options) => {
   const lang: Lang = options.language === 'de' ? 'de' : 'en'
 
-  // Read the figures once at start, and move the countdown once a minute.
+  // Read the figures once at start and start the clock.
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-
     const usage = await $.session.usage()
-    await update($, snapshot, () => toSnapshot(usage.rateLimits, usage.context))
-
-    const tick = async () => {
-      const time = await $.clock.now()
-      await update($, now, () => time)
-    }
-    await tick()
-    $.clock.every(MINUTE, () => {
-      void tick()
-    })
-
+    await remember($, toSnapshot(usage.rateLimits, usage.context))
     return started
   })
 
   // Claude Code pushes new figures after each turn and when a limit moves.
   on('session.measure', async ($, e, next) => {
-    await update($, snapshot, () => toSnapshot(e.rateLimits, e.context))
+    await remember($, toSnapshot(e.rateLimits, e.context))
     return next(e)
   })
 
   // Our row first, then Claude Code's own hint line below it.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
-    const figures = await read($, snapshot)
+    const stored = await read($, snapshot)
     const engineLine = await next(e)
-    if (!hasFigures(figures)) return engineLine
+    if (!hasFigures(stored)) return engineLine
 
     const time = await read($, now)
     const columns = e.viewport?.columns ?? DEFAULT_COLUMNS
-    const segments = buildSegments(figures, time, lang, columns)
+    const segments = buildSegments(stored, time, lang, columns)
     const { Box, Text } = $.ui.resolve(e)
 
     return (

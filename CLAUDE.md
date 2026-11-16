@@ -75,6 +75,8 @@ Extra steps, migrations and cleanups should be `claude plugin …` commands or s
 2. Load the skill `plugin-authoring` for the mod API (events, `$`, UI elements, tests); its types file is the reference. Write the mod **in `mods/<name>/` in this repo**, not in the session's dev-mods folder, so there is one copy only.
 3. Try it live: in a second terminal tab, `claude --plugin-dir <absolute path to mods/<name>>`. Saving a file reloads the mod. If the mod is also installed from the store, disable that copy while testing (`claude plugin disable <name>@claude-mods`).
 4. Write the test and the README from the template.
+   - `$` may only be passed to a function declared at the top level of the file (or imported from the mod's own files), never to a helper defined inside `register`; otherwise the module does not load.
+   - Loading the mod with `--plugin-dir` writes a `tsconfig.json` into the mod folder. Commit it; `.claude-plugin/types/` stays ignored.
 5. Add the catalog entry in `.claude-plugin/marketplace.json` (same `description` as `plugin.json`) and a row in the table of `README.md`.
 6. Go through the checklist, then open a pull request.
 
