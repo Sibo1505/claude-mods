@@ -1,0 +1,13 @@
+{
+  "name": "mod-template",
+  "version": "0.1.0",
+  "description": "Starting point for a new mod: adds the command /mod-template, which says hello.",
+  "author": {
+    "name": "Sibo1505",
+    "url": "https://github.com/Sibo1505"
+  },
+  "homepage": "https://github.com/Sibo1505/claude-mods",
+  "repository": "https://github.com/Sibo1505/claude-mods",
+  "license": "MIT",
+  "keywords": ["template"]
+}

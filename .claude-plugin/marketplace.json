@@ -1,0 +1,15 @@
+{
+  "name": "claude-mods",
+  "owner": {
+    "name": "Sibo1505",
+    "url": "https://github.com/Sibo1505"
+  },
+  "description": "A small app store of Claude Code mods. Browse, pick what you like, install it with one line.",
+  "plugins": [
+    {
+      "name": "mod-manager",
+      "source": "./manager",
+      "description": "Say \"install mods a, b\" in any session: Claude installs, updates or removes mods from this store the way each mod's README describes."
+    }
+  ]
+}

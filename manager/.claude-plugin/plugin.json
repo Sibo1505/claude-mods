@@ -1,0 +1,13 @@
+{
+  "name": "mod-manager",
+  "version": "0.1.0",
+  "description": "Say \"install mods a, b\" in any session: Claude installs, updates or removes mods from this store the way each mod's README describes.",
+  "author": {
+    "name": "Sibo1505",
+    "url": "https://github.com/Sibo1505"
+  },
+  "homepage": "https://github.com/Sibo1505/claude-mods",
+  "repository": "https://github.com/Sibo1505/claude-mods",
+  "license": "MIT",
+  "keywords": ["mods", "store", "installer"]
+}
