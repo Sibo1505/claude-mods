@@ -1,7 +1,16 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { SessionUsage } from 'claude-code'
 
-import { bar, buildSegments, formatRemaining, toneOf } from '../hooks/format'
+import {
+  bar,
+  buildSegments,
+  current,
+  formatClock,
+  formatCountdown,
+  formatRemaining,
+  needsSeconds,
+  toneOf,
+} from '../hooks/format'
 
 // Run with: claude plugin test mods/limit-meter
 // Each `on(...)` here stands for Claude Code beneath the mod.
@@ -143,5 +152,81 @@ test('before the first reading only Claude Code’s own line is drawn', async ($
   const ui = await $.ui.mount({ ...HINT, surface: 'terminal' })
 
   expect(await ui.find({ type: 'Text', text: /5h/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+// Times built from local date parts, so these tests pass in every time zone.
+// Monday 16 November 2026, 12:00 local time.
+const LOCAL_NOON = new Date(2026, 10, 16, 12, 0, 0).getTime()
+const IN_2_26_13 = 2 * 3_600_000 + 26 * 60_000 + 13_000
+
+test('live countdown, reset clock and out-of-date windows', () => {
+  expect(formatCountdown(IN_2_26_13, 'de')).toBe('2:26:13')
+  expect(formatCountdown(59_000, 'en')).toBe('0:00:59')
+  expect(formatCountdown(2 * 86_400_000 + 5 * 3_600_000 + 12 * 60_000 + 33_000, 'de')).toBe(
+    '2 T 05:12:33',
+  )
+
+  expect(formatClock(new Date(2026, 10, 16, 14, 35).getTime(), LOCAL_NOON, 'de')).toBe('14:35')
+  expect(formatClock(new Date(2026, 10, 19, 17, 0).getTime(), LOCAL_NOON, 'de')).toBe('Do 17:00')
+  expect(formatClock(new Date(2026, 10, 19, 17, 0).getTime(), LOCAL_NOON, 'en')).toBe('Thu 17:00')
+
+  const passed = { percent: 89, resetsAt: new Date(LOCAL_NOON - 60_000).toISOString() }
+  expect(current(passed, LOCAL_NOON)).toEqual({ percent: 0 })
+
+  const full = { percent: 100, resetsAt: new Date(LOCAL_NOON + IN_2_26_13).toISOString() }
+  expect(needsSeconds({ fiveHour: full }, LOCAL_NOON)).toBe(true)
+  expect(needsSeconds({ fiveHour: { percent: 99, resetsAt: full.resetsAt } }, LOCAL_NOON)).toBe(false)
+})
+
+test('a used-up limit shows a live timer and the reset time', async ($, on) => {
+  const clock = mock.clock(on, { now: LOCAL_NOON })
+  on('session.usage', () => ({
+    value: {
+      startedAt: LOCAL_NOON,
+      context: { window: 200_000, percent: 40 },
+      rateLimits: [
+        {
+          kind: 'five_hour',
+          percentUsed: 100,
+          resetsAt: new Date(LOCAL_NOON + IN_2_26_13).toISOString(),
+        },
+      ],
+    },
+  }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount({ ...HINT, surface: 'terminal' })
+
+  let row = await ui.find({ type: 'Text', text: /Context/ })
+  expect(row?.text).toContain('5h ▰▰▰▰▰▰▰▰ 100 % · resets in 2:26:13 · 14:26')
+
+  // Every second the timer moves on.
+  await clock.advance(1000)
+  row = await ui.find({ type: 'Text', text: /Context/ })
+  expect(row?.text).toContain('resets in 2:26:12')
+  await ui.unmount()
+})
+
+test('after the reset time the old figure is not shown', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  on('session.usage', () => ({
+    value: {
+      startedAt: NOW,
+      context: { window: 200_000, percent: 9 },
+      rateLimits: [{ kind: 'five_hour', percentUsed: 89, resetsAt: '2026-11-16T12:41:00Z' }],
+    },
+  }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.advance(60 * 60_000)
+
+  const ui = await $.ui.mount({ ...HINT, surface: 'terminal' })
+  const row = await ui.find({ type: 'Text', text: /Context/ })
+
+  expect(row?.text).toContain('5h ▱▱▱▱▱▱▱▱ 0 %   Context 9 %')
+  expect(row?.text).not.toContain('89')
   await ui.unmount()
 })
