@@ -1,0 +1,15 @@
+# Written by Claude Code when it loads a mod for development
+**/.claude-plugin/types/
+
+# Secrets never go into this repo
+.env
+.env.*
+
+# Tools, logs, editors, operating systems
+node_modules/
+.mcpb-cache/
+*.log
+.DS_Store
+Thumbs.db
+*.swp
+*~
