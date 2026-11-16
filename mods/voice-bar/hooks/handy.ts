@@ -31,11 +31,15 @@ export async function defaultPaths($: EngineInterface, os: Os): Promise<string[]
 }
 
 /**
- * A path is only used when it names Handy's program and holds no character a
- * launcher could read as a command (`"`, `&`, `|`, `<`, `>`, `^`, `%`, `` ` ``, `$`, newline).
+ * A path is only used when it names Handy's program (`handy`, `handy.exe`, or
+ * Handy's Linux AppImage such as `Handy_0.10.1_amd64.AppImage`) and holds no
+ * character a launcher could read as a command (`"`, `&`, `|`, `<`, `>`, `^`,
+ * `%`, `` ` ``, `$`, newline).
  */
 export function isSafeHandyPath(path: string): boolean {
-  if (!/(^|[\\/])handy(\.exe)?$/i.test(path)) return false
+  const isHandy =
+    /(^|[\\/])handy(\.exe)?$/i.test(path) || /(^|[\\/])handy[\w.-]*\.appimage$/i.test(path)
+  if (!isHandy) return false
   return !/["&|<>^%`$\n\r]/.test(path)
 }
 
@@ -61,7 +65,8 @@ export async function isRunning($: EngineInterface, os: Os): Promise<boolean> {
     const result = await run($, ['tasklist', '/FI', 'IMAGENAME eq handy.exe', '/NH'])
     return result.stdout.toLowerCase().includes('handy.exe')
   }
-  const result = await run($, ['pgrep', '-x', 'handy'])
+  // -i: the process may be named `handy` or `Handy`.
+  const result = await run($, ['pgrep', '-xi', 'handy'])
   return result.exitCode === 0
 }
 
@@ -81,7 +86,7 @@ export async function startHandy($: EngineInterface, os: Os, path: string): Prom
 export async function stopHandy($: EngineInterface, os: Os): Promise<boolean> {
   if (os === 'windows') return (await run($, ['taskkill', '/IM', 'handy.exe', '/F'])).exitCode === 0
   if (os === 'mac') return (await run($, ['osascript', '-e', 'quit app "Handy"'])).exitCode === 0
-  return (await run($, ['pkill', '-x', 'handy'])).exitCode === 0
+  return (await run($, ['pkill', '-xi', 'handy'])).exitCode === 0
 }
 
 /** Start or stop a recording in the running Handy (its documented CLI flag). */

@@ -37,9 +37,9 @@ What the mod hooks and calls, as `claude plugin validate` reports it:
 - Calls: `$.process.run`, `$.env.get`, `$.fs.exists`, `$.prompt.read`, `$.prompt.fill`, `$.prompt.submit`, `$.ui.toast`, `$.clock.after`, `$.clock.sleep`, `$.state.get`, `$.state.set`, `$.ui.resolve`
 - Processes, only when you click a button or once when a session starts:
   - Handy itself: `handy --toggle-transcription` (start or stop a recording)
-  - checking whether Handy runs: `tasklist` (Windows) or `pgrep -x handy` (macOS, Linux)
+  - checking whether Handy runs: `tasklist` (Windows) or `pgrep -xi handy` (macOS, Linux)
   - starting Handy: `cmd /c start` (Windows), `open -a Handy` (macOS), `sh -c 'setsid …'` (Linux), always with `--start-hidden`
-  - quitting Handy: `taskkill /IM handy.exe /F` (Windows), `osascript -e 'quit app "Handy"'` (macOS), `pkill -x handy` (Linux)
+  - quitting Handy: `taskkill /IM handy.exe /F` (Windows), `osascript -e 'quit app "Handy"'` (macOS), `pkill -xi handy` (Linux)
 - Files: checks whether Handy's program file exists in its usual install folders
 - Environment: reads `OS`, `LOCALAPPDATA` and `ProgramFiles` to find Handy
 - Network: none. Handy works offline; your voice never leaves your computer.
@@ -47,7 +47,7 @@ What the mod hooks and calls, as `claude plugin validate` reports it:
 - Blocks tool calls: no
 - Allows tool calls: no
 
-A Handy path from the settings is only used when it ends in `handy` or `handy.exe` and holds no character a shell could read as a command.
+A Handy path from the settings is only used when it ends in `handy`, `handy.exe` or a Handy AppImage name (`Handy_….AppImage`) and holds no character a shell could read as a command.
 
 ## Requirements
 
@@ -72,7 +72,7 @@ None. If Handy is not installed yet, install it from [handy.computer](https://ha
 
 | Option | What it does | Required | Default |
 |---|---|---|---|
-| `handyPath` | Full path to Handy's program file | no | empty: looks in `%LOCALAPPDATA%\Handy\handy.exe` and `%ProgramFiles%\Handy\handy.exe` (Windows), `/Applications/Handy.app` (macOS), `/usr/bin/handy` or `handy` on the PATH (Linux) |
+| `handyPath` | Full path to Handy's program file | no | empty: looks in `%LOCALAPPDATA%\Handy\handy.exe` and `%ProgramFiles%\Handy\handy.exe` (Windows), `/Applications/Handy.app` (macOS), `/usr/bin/handy` or `handy` on the PATH (Linux; for the AppImage, set the path to the `.AppImage` file) |
 
 Set it in `/plugin` → Installed → voice-bar → configure, or from a shell with `claude plugin configure voice-bar@claude-mods --values-stdin` and `{"handyPath": "…"}` as input.
 

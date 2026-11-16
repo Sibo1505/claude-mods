@@ -64,6 +64,8 @@ function captureToasts(on: On): string[] {
 test('only real Handy paths without shell characters are used', () => {
   expect(isSafeHandyPath('C:\\Users\\me\\AppData\\Local\\Handy\\handy.exe')).toBe(true)
   expect(isSafeHandyPath('/Applications/Handy.app/Contents/MacOS/handy')).toBe(true)
+  expect(isSafeHandyPath('/home/me/Apps/Handy_0.10.1_amd64.AppImage')).toBe(true)
+  expect(isSafeHandyPath('/home/me/Apps/NotHandy.AppImage')).toBe(false)
   expect(isSafeHandyPath('C:\\Tools\\other.exe')).toBe(false)
   expect(isSafeHandyPath('C:\\x & calc\\handy.exe')).toBe(false)
   expect(isSafeHandyPath('/tmp/$(rm -rf ~)/handy')).toBe(false)
