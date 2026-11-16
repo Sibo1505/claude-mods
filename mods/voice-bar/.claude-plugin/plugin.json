@@ -1,0 +1,21 @@
+{
+  "name": "voice-bar",
+  "version": "0.1.0",
+  "description": "Speak and send buttons above the prompt: dictate with Handy (offline speech-to-text), see at a glance whether it is listening, and send with one click.",
+  "author": {
+    "name": "Sibo1505",
+    "url": "https://github.com/Sibo1505"
+  },
+  "homepage": "https://github.com/Sibo1505/claude-mods",
+  "repository": "https://github.com/Sibo1505/claude-mods",
+  "license": "MIT",
+  "keywords": ["voice", "dictation", "speech-to-text", "handy"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "handyPath": {
+      "type": "string",
+      "title": "Handy executable",
+      "description": "Full path to Handy's program file. Leave empty to find it in the usual install folders."
+    }
+  }
+}

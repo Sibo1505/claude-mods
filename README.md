@@ -9,12 +9,13 @@ A **mod** is a Claude Code plugin with a small TypeScript module that changes ho
 | Mod | What it does | Kind | Status | Version |
 |---|---|---|---|---|
 | [limit-meter](mods/limit-meter/) | Your 5-hour and weekly limits and the context fill under the prompt, with colored bars and reset countdowns. | Status line | Experimental | 0.2.0 |
+| [voice-bar](mods/voice-bar/) | Speak and send buttons above the prompt: dictate with [Handy](https://handy.computer) (offline), see whether it is listening, send with one click. | Band | Experimental | 0.1.0 |
 
 ## Tools
 
 | Plugin | What it does | Version |
 |---|---|---|
-| [mod-manager](manager/) | Say "install mods a, b" in any session, and Claude installs, updates or removes them for you. | 0.1.0 |
+| [mod-manager](manager/) | Say "install mods a, b" in any session, and Claude installs, updates or removes them for you. | 0.1.1 |
 
 ## Install a mod
 
