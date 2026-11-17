@@ -8,7 +8,7 @@ A **mod** is a Claude Code plugin with a small TypeScript module that changes ho
 
 | Mod | What it does | Kind | Status | Version |
 |---|---|---|---|---|
-| [limit-meter](mods/limit-meter/) | Your 5-hour and weekly limits and the context fill under the prompt, with colored bars and reset countdowns. | Status line | Experimental | 0.2.0 |
+| [limit-meter](mods/limit-meter/) | Your 5-hour and weekly limits and the context fill under the prompt, with colored bars and reset countdowns. | Status line | Experimental | 0.2.1 |
 
 ## Tools
 

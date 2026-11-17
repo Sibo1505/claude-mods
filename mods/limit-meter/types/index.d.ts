@@ -21,7 +21,7 @@ declare module 'claude-code' {
     'limit-meter': {
       /** The last figures Claude Code measured; null before the first. */
       snapshot: Shaped<LimitSnapshot | null>
-      /** The time the countdown is drawn against, moved once a minute. */
+      /** The time the countdown is drawn against: moved once a minute, every second while a live timer is drawn. */
       now: number
     }
   }

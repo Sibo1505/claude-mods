@@ -8,7 +8,9 @@ import {
   formatClock,
   formatCountdown,
   formatRemaining,
+  MINUTE,
   needsSeconds,
+  nextTick,
   toneOf,
 } from '../hooks/format'
 
@@ -170,6 +172,9 @@ test('live countdown, reset clock and out-of-date windows', () => {
   expect(formatClock(new Date(2026, 10, 16, 14, 35).getTime(), LOCAL_NOON, 'de')).toBe('14:35')
   expect(formatClock(new Date(2026, 10, 19, 17, 0).getTime(), LOCAL_NOON, 'de')).toBe('Do 17:00')
   expect(formatClock(new Date(2026, 10, 19, 17, 0).getTime(), LOCAL_NOON, 'en')).toBe('Thu 17:00')
+  // Six days or more ahead: with the date, so next Monday is not read as today.
+  expect(formatClock(new Date(2026, 10, 23, 11, 0).getTime(), LOCAL_NOON, 'de')).toBe('Mo 23.11. 11:00')
+  expect(formatClock(new Date(2026, 10, 23, 11, 0).getTime(), LOCAL_NOON, 'en')).toBe('Mon 23 Nov 11:00')
 
   const passed = { percent: 89, resetsAt: new Date(LOCAL_NOON - 60_000).toISOString() }
   expect(current(passed, LOCAL_NOON)).toEqual({ percent: 0 })
@@ -177,6 +182,14 @@ test('live countdown, reset clock and out-of-date windows', () => {
   const full = { percent: 100, resetsAt: new Date(LOCAL_NOON + IN_2_26_13).toISOString() }
   expect(needsSeconds({ fiveHour: full }, LOCAL_NOON)).toBe(true)
   expect(needsSeconds({ fiveHour: { percent: 99, resetsAt: full.resetsAt } }, LOCAL_NOON)).toBe(false)
+  // 99.6 is shown as "100 %", so it is used up too.
+  expect(needsSeconds({ fiveHour: { percent: 99.6, resetsAt: full.resetsAt } }, LOCAL_NOON)).toBe(true)
+  expect(bar(99.6)).toBe('▰▰▰▰▰▰▰▰')
+
+  // Seconds only while a live timer is drawn, landing half-way between seconds.
+  expect(nextTick({ fiveHour: full }, LOCAL_NOON, true)).toBe(500)
+  expect(nextTick({ fiveHour: full }, LOCAL_NOON, false)).toBe(MINUTE)
+  expect(nextTick({ fiveHour: { percent: 40, resetsAt: full.resetsAt } }, LOCAL_NOON, true)).toBe(MINUTE)
 })
 
 test('a used-up limit shows a live timer and the reset time', async ($, on) => {
@@ -202,10 +215,13 @@ test('a used-up limit shows a live timer and the reset time', async ($, on) => {
   let row = await ui.find({ type: 'Text', text: /Context/ })
   expect(row?.text).toContain('5h ▰▰▰▰▰▰▰▰ 100 % · resets in 2:26:13 · 14:26')
 
-  // Every second the timer moves on.
-  await clock.advance(1000)
+  // Ticks land half-way between two shown seconds: one step per second, none skipped.
+  await clock.advance(1500)
   row = await ui.find({ type: 'Text', text: /Context/ })
   expect(row?.text).toContain('resets in 2:26:12')
+  await clock.advance(1000)
+  row = await ui.find({ type: 'Text', text: /Context/ })
+  expect(row?.text).toContain('resets in 2:26:11')
   await ui.unmount()
 })
 
@@ -228,5 +244,21 @@ test('after the reset time the old figure is not shown', async ($, on) => {
 
   expect(row?.text).toContain('5h ▱▱▱▱▱▱▱▱ 0 %   Context 9 %')
   expect(row?.text).not.toContain('89')
+  await ui.unmount()
+})
+
+test('a session without a screen runs no clock', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  on('session.usage', () => ({ value: USAGE }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+
+  await $.session.start({ cwd: '/', surface: null, isInteractive: false })
+  await clock.advance(10 * 60_000)
+
+  // The clock never ran: the time stays unset, so no countdown is worked out.
+  const ui = await $.ui.mount({ ...HINT, surface: 'terminal' })
+  const row = await ui.find({ type: 'Text', text: /Context/ })
+  expect(row?.text).toContain('5h ▰▱▱▱▱▱▱▱ 6 %')
+  expect(row?.text).not.toContain('min')
   await ui.unmount()
 })
