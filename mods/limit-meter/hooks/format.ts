@@ -118,7 +118,7 @@ export function nextTick(snapshot: LimitSnapshot | null, now: number, isTimerDra
   return offset === 0 ? SECOND : offset
 }
 
-/** `2 h 26 min`, `41 min`, `3 d 5 h` (de: `3 T 5 h`); undefined without a time. */
+/** `2 h 26 min`, `1 h`, `41 min`, `3 d 5 h` (de: `3 T 5 h`); undefined without a time. */
 export function formatRemaining(
   resetsAt: string | undefined,
   now: number,
@@ -133,7 +133,7 @@ export function formatRemaining(
   const rest = minutes % 60
 
   if (days > 0) return `${days} ${LABELS[lang].day} ${hours} h`
-  if (hours > 0) return `${hours} h ${rest} min`
+  if (hours > 0) return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`
   return `${rest} min`
 }
 

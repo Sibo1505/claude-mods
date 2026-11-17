@@ -50,6 +50,7 @@ test('bars, colors and countdowns', () => {
 
   expect(formatRemaining('2026-11-16T14:26:00Z', NOW, 'de')).toBe('2 h 26 min')
   expect(formatRemaining('2026-11-16T12:41:00Z', NOW, 'en')).toBe('41 min')
+  expect(formatRemaining('2026-11-16T13:00:00Z', NOW, 'en')).toBe('1 h')
   expect(formatRemaining('2026-11-19T17:00:00Z', NOW, 'de')).toBe('3 T 5 h')
   expect(formatRemaining('2026-11-19T17:00:00Z', NOW, 'en')).toBe('3 d 5 h')
   expect(formatRemaining(undefined, NOW, 'en')).toBeUndefined()

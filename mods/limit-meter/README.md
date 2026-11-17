@@ -113,6 +113,6 @@ None.
 
 ## Changelog
 
-- 0.2.1 (2026-11-17): Fixes from a code review: 99.5–99.9 % (shown as "100 %") also gets the live timer and a full bar; the live timer never skips or repeats a second; the clock restarts with every new reading (a lost timer comes back); no clock without a screen or on a narrow terminal; a reset six or more days away shows its date; a failure never stops the measurement for other plugins; the row never wraps (it drops the bars, then the countdowns, by its real length instead of fixed widths).
+- 0.2.1 (2026-11-17): Fixes from a code review: 99.5–99.9 % (shown as "100 %") also gets the live timer and a full bar; the live timer never skips or repeats a second; the clock restarts with every new reading (a lost timer comes back); no clock without a screen or on a narrow terminal; a reset six or more days away shows its date; a failure never stops the measurement for other plugins; the row never wraps (it drops the bars, then the countdowns, by its real length instead of fixed widths); a full hour reads "1 h", not "1 h 0 min".
 - 0.2.0 (2026-11-16): A used-up limit shows a live timer (every second) and the local reset time. After a reset the old figure is no longer shown (0 % until the next reading).
 - 0.1.0 (2026-11-16): First version.
