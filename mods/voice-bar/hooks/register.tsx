@@ -1,11 +1,13 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { HandyHealth, VoicePhase } from '../types'
 import {
   detectOs,
   findHandy,
-  isRunning,
+  forceStopHandy,
+  handyProcess,
+  looksLikeTranscript,
   startHandy,
   stopHandy,
   toggleRecording,
@@ -25,79 +27,77 @@ const MESSAGES = {
   missing:
     'Handy was not found. Install it from handy.computer, or set its path in the voice-bar settings.',
   off: 'Handy is off. Press ⏻ to start it.',
+  cantCheck: 'Could not check whether Handy runs: the system did not answer. Try again in a moment.',
   ready: 'Handy is ready. Press Speak to dictate.',
   listening: 'Handy is listening. Press Stop when you are done.',
-  stopped: 'Stopped. Handy is writing the text into the prompt.',
   empty: 'Nothing to send: the prompt is empty.',
+  stopFirst: 'Stop the recording first, then turn Handy off.',
+  notStarted: 'Handy did not start.',
+  notQuit: 'Handy did not quit.',
 } as const
 
-// The configured path, set by `register` (a reload sets it again).
-let configuredPath = ''
+const reasonOf = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
-// A copy of `phase` for the per-keystroke check in `prompt.edit`, so a key
-// costs one boolean test and no state read. Kept in step by `setPhase`.
+// Module state. A reload starts it over, and `register` and `session.start`
+// set it again.
+type Handy = { os: Os; path: string | undefined }
+let configuredPath = ''
+/** Where Handy is, once found: the system and the path do not change in a session. */
+let found: Handy | undefined
+/** A copy of `phase` for the per-keystroke check in `prompt.edit`. */
 let isRecordingNow = false
+/** The timer that ends the current red flash. */
+let flashTimer: Timer | undefined
+
+async function locate($: EngineInterface): Promise<Handy> {
+  if (found !== undefined) return found
+  const os = await detectOs($)
+  const handy = { os, path: await findHandy($, os, configuredPath) }
+  if (handy.path !== undefined) found = handy // keep looking while it is missing
+  return handy
+}
 
 async function setPhase($: EngineInterface, next: VoicePhase): Promise<void> {
   isRecordingNow = next === 'recording'
   await update($, phase, () => next)
 }
 
-type Handy = { os: Os; path: string | undefined }
-
-async function locate($: EngineInterface): Promise<Handy> {
-  const os = await detectOs($)
-  return { os, path: await findHandy($, os, configuredPath) }
-}
-
-/** Check whether Handy runs and set the light; true when it runs. */
-async function refresh($: EngineInterface): Promise<boolean> {
-  const { os, path } = await locate($)
-  if (path === undefined) {
-    await update($, health, () => 'missing' as HandyHealth)
-    return false
+/** Check Handy once and set the light. */
+async function refresh($: EngineInterface): Promise<{ state: HandyHealth; handy: Handy }> {
+  const handy = await locate($)
+  let state: HandyHealth = 'missing'
+  if (handy.path !== undefined) {
+    const process = await handyProcess($, handy.os)
+    state = process === 'running' ? 'running' : process === 'off' ? 'off' : 'error'
   }
-  const running = await isRunning($, os)
-  await update($, health, () => (running ? 'running' : 'off') as HandyHealth)
-  if (!running) await setPhase($, 'idle')
-  return running
+  await update($, health, () => state)
+  if (state === 'off' || state === 'missing') await setPhase($, 'idle')
+  return { state, handy }
 }
 
 /** Turn a button red for a moment and say why. */
 async function fail($: EngineInterface, button: 'speak' | 'send', why: string): Promise<void> {
   $.ui.toast(why)
+  flashTimer?.cancel()
   await update($, flash, () => button)
-  $.clock.after(FLASH_MS, () => {
+  flashTimer = $.clock.after(FLASH_MS, () => {
     void update($, flash, () => null)
   })
 }
 
 /** Speak / Stop: start or stop a recording in Handy. */
 async function speak($: EngineInterface): Promise<void> {
-  const { os, path } = await locate($)
-  if (path === undefined) {
-    await update($, health, () => 'missing' as HandyHealth)
-    return fail($, 'speak', MESSAGES.missing)
-  }
-  if (!(await isRunning($, os))) {
-    await update($, health, () => 'off' as HandyHealth)
-    await setPhase($, 'idle')
-    return fail($, 'speak', MESSAGES.off)
-  }
+  const { state, handy } = await refresh($)
+  if (state === 'missing' || handy.path === undefined) return fail($, 'speak', MESSAGES.missing)
+  if (state === 'off') return fail($, 'speak', MESSAGES.off)
+  if (state === 'error') return fail($, 'speak', MESSAGES.cantCheck)
 
-  let problem: string | undefined
-  try {
-    const result = await toggleRecording($, path)
-    if (result.exitCode !== 0) problem = result.stderr.trim() || `exit code ${result.exitCode}`
-  } catch (error) {
-    problem = error instanceof Error ? error.message : String(error)
-  }
-  if (problem !== undefined) {
+  const result = await toggleRecording($, handy.path)
+  if (result.exitCode !== 0) {
     await update($, health, () => 'error' as HandyHealth)
-    return fail($, 'speak', `Handy did not answer: ${problem}`)
+    const why = result.stderr.trim() || `exit code ${result.exitCode}`
+    return fail($, 'speak', `Handy did not answer: ${why}`)
   }
-
-  await update($, health, () => 'running' as HandyHealth)
   const now = await read($, phase)
   await setPhase($, now === 'recording' ? 'idle' : 'recording')
 }
@@ -108,65 +108,83 @@ async function send($: EngineInterface): Promise<void> {
   if (text.trim() === '') return fail($, 'send', MESSAGES.empty)
 
   await $.prompt.fill({ text: '', mode: 'replace' })
+  let refused: string | undefined
   try {
-    await $.prompt.submit({ text })
+    const result = await $.prompt.submit({ text })
+    if (result.drop !== undefined) refused = result.drop
   } catch (error) {
+    refused = reasonOf(error)
+  }
+  if (refused !== undefined) {
     // Put the words back so nothing is lost.
     await $.prompt.fill({ text, mode: 'replace' })
-    await fail($, 'send', `Could not send: ${error instanceof Error ? error.message : String(error)}`)
+    await fail($, 'send', `Not sent: ${refused}`)
   }
 }
 
 /** ●: show what is going on. */
 async function showStatus($: EngineInterface): Promise<void> {
-  const running = await refresh($)
-  const now = await read($, phase)
-  const state = await read($, health)
+  const { state } = await refresh($)
   if (state === 'missing') $.ui.toast(MESSAGES.missing)
-  else if (!running) $.ui.toast(MESSAGES.off)
-  else $.ui.toast(now === 'recording' ? MESSAGES.listening : MESSAGES.ready)
+  else if (state === 'off') $.ui.toast(MESSAGES.off)
+  else if (state === 'error') $.ui.toast(MESSAGES.cantCheck)
+  else $.ui.toast(isRecordingNow ? MESSAGES.listening : MESSAGES.ready)
 }
 
 /** ⏻: start Handy when it is off, quit it when it runs. */
 async function power($: EngineInterface): Promise<void> {
-  const { os, path } = await locate($)
-  if (path === undefined) {
-    await update($, health, () => 'missing' as HandyHealth)
+  const { state, handy } = await refresh($)
+  if (state === 'missing' || handy.path === undefined) {
     $.ui.toast(MESSAGES.missing)
     return
   }
-  if (await isRunning($, os)) {
-    await stopHandy($, os)
-    await setPhase($, 'idle')
-  } else {
-    await startHandy($, os, path)
+  if (state === 'error') {
+    $.ui.toast(MESSAGES.cantCheck)
+    return
   }
+
+  if (state === 'off') {
+    const started = await startHandy($, handy.os, handy.path)
+    await $.clock.sleep(SETTLE_MS)
+    const after = await refresh($)
+    if (after.state !== 'running') {
+      const why = started.stderr.trim()
+      $.ui.toast(why === '' ? MESSAGES.notStarted : `${MESSAGES.notStarted} ${why}`)
+    }
+    return
+  }
+
+  // Quitting mid-recording would lose what was said.
+  if (isRecordingNow) {
+    $.ui.toast(MESSAGES.stopFirst)
+    return
+  }
+  await stopHandy($, handy.os)
   await $.clock.sleep(SETTLE_MS)
-  await refresh($)
+  if ((await refresh($)).state === 'running') {
+    await forceStopHandy($, handy.os)
+    await $.clock.sleep(SETTLE_MS)
+    if ((await refresh($)).state === 'running') $.ui.toast(MESSAGES.notQuit)
+  }
 }
 
 export const register: Register = (on, options) => {
   configuredPath = typeof options.handyPath === 'string' ? options.handyPath.trim() : ''
+  found = undefined
 
   // Learn once at start whether Handy runs (one quick process list, no polling).
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     isRecordingNow = (await read($, phase)) === 'recording'
-    void refresh($)
+    void refresh($).catch(() => undefined)
     return started
   })
 
   // Handy pastes the text when a recording ends, also one stopped with its own
-  // shortcut: then the button goes back to Speak. A paste reaches the prompt
-  // as an edit with no key; outside a recording this is one boolean check.
+  // shortcut: then the button goes back to Speak. A paste reaches the prompt as
+  // an edit with no key. Outside a recording this is one boolean check per key.
   on('prompt.edit', ($, e, next) => {
-    if (isRecordingNow && e.key === undefined && e.inputText !== '') void setPhase($, 'idle')
-    return next(e)
-  })
-
-  // Text put into the prompt another way (a plugin, history) also ends it.
-  on('prompt.change', async ($, e, next) => {
-    if (isRecordingNow) await setPhase($, 'idle')
+    if (isRecordingNow && looksLikeTranscript(e.key, e.inputText)) void setPhase($, 'idle')
     return next(e)
   })
 
