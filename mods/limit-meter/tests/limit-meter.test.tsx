@@ -71,6 +71,22 @@ test('a narrow terminal drops the bars first, then the countdowns', () => {
   expect(text(40)).toBe('5h 6 %   Week 6 %   Context 9 %')
 })
 
+test('the row never wraps: at 80 columns a long German row drops its bars', () => {
+  const snapshot = {
+    fiveHour: { percent: 42, resetsAt: '2026-11-16T13:03:00Z' },
+    week: { percent: 46, resetsAt: '2026-11-16T18:23:00Z' },
+    context: 6,
+  }
+  const text = (columns: number) =>
+    buildSegments(snapshot, NOW, 'de', columns)
+      .map(segment => segment.text)
+      .join('')
+
+  expect(text(100)).toBe('5h ▰▰▰▱▱▱▱▱ 42 % · 1 h 3 min   Woche ▰▰▰▰▱▱▱▱ 46 % · 6 h 23 min   Kontext 6 %')
+  expect(text(80)).toBe('5h 42 % · 1 h 3 min   Woche 46 % · 6 h 23 min   Kontext 6 %')
+  expect(text(80).length).toBeLessThanOrEqual(76)
+})
+
 test('the row shows the limits under the prompt, on terminal and desktop', async ($, on) => {
   mock.clock(on, { now: NOW })
   on('session.usage', () => ({ value: USAGE }))

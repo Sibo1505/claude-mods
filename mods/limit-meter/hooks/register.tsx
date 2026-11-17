@@ -8,7 +8,7 @@ import type {
 } from 'claude-code'
 
 import type { LimitSnapshot, LimitWindow } from '../types'
-import { MEDIUM, buildSegments, hasFigures, nextTick } from './format'
+import { fitRow, hasFigures, nextTick } from './format'
 import type { Lang } from './format'
 
 const snapshot = atom({ plugin: 'limit-meter', key: 'snapshot' } as const, null, {
@@ -48,13 +48,14 @@ function toSnapshot(
 let timer: Timer | undefined
 let generation = 0
 let isInteractive = false
-let lastColumns = DEFAULT_COLUMNS
+/** Whether the last drawn row had countdowns: only then may a live timer tick. */
+let isTimerDrawn = true
 
 async function tick($: EngineInterface, run: number): Promise<void> {
   if (run !== generation) return
   const time = await $.clock.now()
   await update($, now, () => time)
-  const delay = nextTick(await read($, snapshot), time, lastColumns >= MEDIUM)
+  const delay = nextTick(await read($, snapshot), time, isTimerDrawn)
   if (run !== generation) return
   timer = $.clock.after(delay, () => {
     void tick($, run).catch(() => undefined)
@@ -114,8 +115,8 @@ export const register: Register = (on, options) => {
 
     const time = await read($, now)
     const columns = e.viewport?.columns ?? DEFAULT_COLUMNS
-    lastColumns = columns
-    const segments = buildSegments(stored, time, lang, columns)
+    const { segments, hasTimes } = fitRow(stored, time, lang, columns)
+    isTimerDrawn = hasTimes
     const { Box, Text } = $.ui.resolve(e)
 
     return (

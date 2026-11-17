@@ -34,10 +34,8 @@ const LABELS = {
 } as const
 
 const BAR_CELLS = 8
-/** From this width on, the row has bars and countdowns. */
-const WIDE = 80
-/** From this width on, the row has countdowns (no bars). */
-export const MEDIUM = 50
+/** Cells the row leaves free: Claude Code indents it and a terminal wraps at the last cell. */
+const ROW_MARGIN = 4
 
 const SECOND = 1000
 export const MINUTE = 60_000
@@ -184,16 +182,18 @@ export function hasFigures(snapshot: LimitSnapshot | null): snapshot is LimitSna
   )
 }
 
-/** The row as segments, fitted to the width it is drawn in. */
-export function buildSegments(
-  snapshot: LimitSnapshot,
-  now: number,
-  lang: Lang,
-  columns: number,
-): Segment[] {
+/** How much the row shows: the fullest that fits is used. */
+type Detail = { hasBars: boolean; hasTimes: boolean }
+
+const SHORTEST: Detail = { hasBars: false, hasTimes: false }
+const DETAILS: readonly Detail[] = [
+  { hasBars: true, hasTimes: true },
+  { hasBars: false, hasTimes: true },
+  SHORTEST,
+]
+
+function segmentsFor(snapshot: LimitSnapshot, now: number, lang: Lang, detail: Detail): Segment[] {
   const labels = LABELS[lang]
-  const hasBars = columns >= WIDE
-  const hasTimes = columns >= MEDIUM
   const segments: Segment[] = []
 
   const gap = () => {
@@ -206,9 +206,9 @@ export function buildSegments(
     gap()
     const tone = toneOf(window.percent)
     segments.push({ text: `${label} `, isDim: true })
-    if (hasBars) segments.push({ text: `${bar(window.percent)} `, tone })
+    if (detail.hasBars) segments.push({ text: `${bar(window.percent)} `, tone })
     segments.push({ text: formatPercent(window.percent), tone })
-    if (!hasTimes) return
+    if (!detail.hasTimes) return
 
     const ms = msUntilReset(window.resetsAt, now)
     if (ms === undefined) return
@@ -231,4 +231,36 @@ export function buildSegments(
   }
 
   return segments
+}
+
+const widthOf = (segments: readonly Segment[]) =>
+  segments.reduce((sum, segment) => sum + segment.text.length, 0)
+
+/**
+ * The row fitted to the width it is drawn in: with bars and countdowns when
+ * they fit, else without bars, else without countdowns. `hasTimes` says
+ * whether countdowns are on screen (only then does a live timer tick).
+ */
+export function fitRow(
+  snapshot: LimitSnapshot,
+  now: number,
+  lang: Lang,
+  columns: number,
+): { segments: Segment[]; hasTimes: boolean } {
+  const room = columns - ROW_MARGIN
+  for (const detail of DETAILS) {
+    const segments = segmentsFor(snapshot, now, lang, detail)
+    if (widthOf(segments) <= room) return { segments, hasTimes: detail.hasTimes }
+  }
+  return { segments: segmentsFor(snapshot, now, lang, SHORTEST), hasTimes: false }
+}
+
+/** The row as segments, fitted to the width it is drawn in. */
+export function buildSegments(
+  snapshot: LimitSnapshot,
+  now: number,
+  lang: Lang,
+  columns: number,
+): Segment[] {
+  return fitRow(snapshot, now, lang, columns).segments
 }
