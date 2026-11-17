@@ -20,6 +20,7 @@ const LABELS = {
     day: 'd',
     freeIn: 'resets in',
     weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    months: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
   },
   de: {
     fiveHour: '5h',
@@ -28,6 +29,7 @@ const LABELS = {
     day: 'T',
     freeIn: 'frei in',
     weekdays: ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'],
+    months: [],
   },
 } as const
 
@@ -35,39 +37,44 @@ const BAR_CELLS = 8
 /** From this width on, the row has bars and countdowns. */
 const WIDE = 80
 /** From this width on, the row has countdowns (no bars). */
-const MEDIUM = 50
+export const MEDIUM = 50
 
-const MINUTE = 60_000
+const SECOND = 1000
+export const MINUTE = 60_000
+const DAY = 86_400_000
 const DAY_MINUTES = 1440
+
+const pad = (n: number) => String(n).padStart(2, '0')
+
+/** The percent as the row shows it: 99.6 is "100 %". */
+const shown = (percent: number) => Math.round(percent)
 
 /** Green under 50 %, yellow from 50 %, red from 80 %. */
 export function toneOf(percent: number): Tone {
-  if (percent >= 80) return 'error'
-  if (percent >= 50) return 'warning'
+  if (shown(percent) >= 80) return 'error'
+  if (shown(percent) >= 50) return 'warning'
   return 'success'
 }
 
 /**
  * `▰▱▱▱▱▱▱▱` for 6 %: rounded to the nearest cell, but any use shows at least
- * one filled cell, and only 100 % or more fills the bar.
+ * one filled cell, and only what the row shows as 100 % fills the bar.
  */
 export function bar(percent: number, cells: number = BAR_CELLS): string {
   let filled = 0
-  if (percent >= 100) filled = cells
+  if (shown(percent) >= 100) filled = cells
   else if (percent > 0) filled = Math.min(cells - 1, Math.max(1, Math.round((percent / 100) * cells)))
   return '▰'.repeat(filled) + '▱'.repeat(cells - filled)
 }
 
 export function formatPercent(percent: number): string {
-  return `${Math.round(percent)} %`
+  return `${shown(percent)} %`
 }
 
-const pad = (n: number) => String(n).padStart(2, '0')
-
-/** Milliseconds until the window resets; undefined without a usable time. */
-function msUntilReset(window: LimitWindow, now: number): number | undefined {
-  if (window.resetsAt === undefined || now <= 0) return undefined
-  const ms = Date.parse(window.resetsAt) - now
+/** Milliseconds until a reset; undefined without a usable time. */
+export function msUntilReset(resetsAt: string | undefined, now: number): number | undefined {
+  if (resetsAt === undefined || now <= 0) return undefined
+  const ms = Date.parse(resetsAt) - now
   return Number.isFinite(ms) ? ms : undefined
 }
 
@@ -77,22 +84,40 @@ function msUntilReset(window: LimitWindow, now: number): number | undefined {
  * measures again.
  */
 export function current(window: LimitWindow, now: number): LimitWindow {
-  const ms = msUntilReset(window, now)
+  const ms = msUntilReset(window.resetsAt, now)
   return ms !== undefined && ms <= 0 ? { percent: 0 } : window
 }
 
-/** True when the window is used up and has a reset still ahead. */
+/** True when the row shows the window as 100 % and its reset is still ahead. */
 export function isExhausted(window: LimitWindow, now: number): boolean {
-  const ms = msUntilReset(window, now)
-  return window.percent >= 100 && ms !== undefined && ms > 0
+  const ms = msUntilReset(window.resetsAt, now)
+  return shown(window.percent) >= 100 && ms !== undefined && ms > 0
+}
+
+/** The used-up windows with their time left, soonest first. */
+function exhaustedWindows(snapshot: LimitSnapshot | null, now: number): number[] {
+  if (snapshot === null) return []
+  return [snapshot.fiveHour, snapshot.week]
+    .filter((window): window is LimitWindow => window !== undefined && isExhausted(window, now))
+    .map(window => msUntilReset(window.resetsAt, now) ?? 0)
+    .sort((a, b) => a - b)
 }
 
 /** True when a window is used up: then the countdown ticks every second. */
 export function needsSeconds(snapshot: LimitSnapshot | null, now: number): boolean {
-  if (snapshot === null) return false
-  return [snapshot.fiveHour, snapshot.week].some(
-    window => window !== undefined && isExhausted(window, now),
-  )
+  return exhaustedWindows(snapshot, now).length > 0
+}
+
+/**
+ * How long until the clock should tick again. Every second while a live timer
+ * is drawn, landing half-way between two shown seconds so a late tick never
+ * skips or repeats one; else once a minute.
+ */
+export function nextTick(snapshot: LimitSnapshot | null, now: number, isTimerDrawn: boolean): number {
+  const [soonest] = exhaustedWindows(snapshot, now)
+  if (!isTimerDrawn || soonest === undefined) return MINUTE
+  const offset = (((soonest - SECOND / 2) % SECOND) + SECOND) % SECOND
+  return offset === 0 ? SECOND : offset
 }
 
 /** `2 h 26 min`, `41 min`, `3 d 5 h` (de: `3 T 5 h`); undefined without a time. */
@@ -101,8 +126,7 @@ export function formatRemaining(
   now: number,
   lang: Lang,
 ): string | undefined {
-  if (resetsAt === undefined) return undefined
-  const ms = msUntilReset({ percent: 0, resetsAt }, now)
+  const ms = msUntilReset(resetsAt, now)
   if (ms === undefined) return undefined
 
   const minutes = Math.max(0, Math.round(ms / MINUTE))
@@ -117,7 +141,7 @@ export function formatRemaining(
 
 /** The live countdown: `2:26:13`, or `2 T 05:12:33` past a day. */
 export function formatCountdown(ms: number, lang: Lang): string {
-  const total = Math.max(0, Math.ceil(ms / 1000))
+  const total = Math.max(0, Math.ceil(ms / SECOND))
   const days = Math.floor(total / 86_400)
   const hours = Math.floor((total % 86_400) / 3600)
   const minutes = Math.floor((total % 3600) / 60)
@@ -126,7 +150,11 @@ export function formatCountdown(ms: number, lang: Lang): string {
   return `${hours}:${pad(minutes)}:${pad(seconds)}`
 }
 
-/** The local time of the reset: `14:35` today, `Do 17:00` on another day. */
+/**
+ * The local time of the reset: `14:35` today, `Do 17:00` within the next six
+ * days, and with the date further out, so a reset a week away is never read
+ * as today (`Mo 23.11. 11:00`, en `Mon 23 Nov 11:00`).
+ */
 export function formatClock(resetAt: number, now: number, lang: Lang): string {
   const at = new Date(resetAt)
   const today = new Date(now)
@@ -135,7 +163,15 @@ export function formatClock(resetAt: number, now: number, lang: Lang): string {
     at.getFullYear() === today.getFullYear() &&
     at.getMonth() === today.getMonth() &&
     at.getDate() === today.getDate()
-  return isSameDay ? time : `${LABELS[lang].weekdays[at.getDay()]} ${time}`
+  if (isSameDay) return time
+
+  const weekday = LABELS[lang].weekdays[at.getDay()]
+  if (resetAt - now < 6 * DAY) return `${weekday} ${time}`
+  const date =
+    lang === 'de'
+      ? `${pad(at.getDate())}.${pad(at.getMonth() + 1)}.`
+      : `${at.getDate()} ${LABELS.en.months[at.getMonth()]}`
+  return `${weekday} ${date} ${time}`
 }
 
 /** True when there is anything to draw. */
@@ -174,8 +210,9 @@ export function buildSegments(
     segments.push({ text: formatPercent(window.percent), tone })
     if (!hasTimes) return
 
-    const ms = msUntilReset(window, now)
-    if (isExhausted(window, now) && ms !== undefined) {
+    const ms = msUntilReset(window.resetsAt, now)
+    if (ms === undefined) return
+    if (isExhausted(window, now)) {
       segments.push({ text: ` · ${labels.freeIn} ${formatCountdown(ms, lang)}`, tone })
       segments.push({ text: ` · ${formatClock(now + ms, now, lang)}`, isDim: true })
       return

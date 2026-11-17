@@ -8,7 +8,7 @@ import type {
 } from 'claude-code'
 
 import type { LimitSnapshot, LimitWindow } from '../types'
-import { buildSegments, hasFigures, needsSeconds } from './format'
+import { MEDIUM, buildSegments, hasFigures, nextTick } from './format'
 import type { Lang } from './format'
 
 const snapshot = atom({ plugin: 'limit-meter', key: 'snapshot' } as const, null, {
@@ -16,8 +16,6 @@ const snapshot = atom({ plugin: 'limit-meter', key: 'snapshot' } as const, null,
 })
 const now = atom({ plugin: 'limit-meter', key: 'now' } as const, 0)
 
-const SECOND = 1000
-const MINUTE = 60_000
 /** Used where the surface has not measured its width. */
 const DEFAULT_COLUMNS = 120
 
@@ -42,31 +40,42 @@ function toSnapshot(
   return result
 }
 
-// The clock behind the countdown. It ticks once a minute, and once a second
-// only while a limit is used up (then the row shows a live timer). Each tick
-// is one local state write: no model call, no tokens. These variables start
+// The clock behind the countdown: a chain of single timers. Each tick writes
+// the time (one local state write: no model call, no tokens) and plans the
+// next one: once a minute, or once a second while a used-up limit's live
+// timer is drawn. It runs only where a row is drawn. These variables start
 // over on a reload, and session.start sets them again.
-let figures: LimitSnapshot | null = null
 let timer: Timer | undefined
-let interval = 0
+let generation = 0
+let isInteractive = false
+let lastColumns = DEFAULT_COLUMNS
 
-async function tick($: EngineInterface): Promise<void> {
+async function tick($: EngineInterface, run: number): Promise<void> {
+  if (run !== generation) return
   const time = await $.clock.now()
   await update($, now, () => time)
-  const wanted = needsSeconds(figures, time) ? SECOND : MINUTE
-  if (wanted !== interval) {
-    timer?.cancel()
-    interval = wanted
-    timer = $.clock.every(wanted, () => {
-      void tick($)
-    })
-  }
+  const delay = nextTick(await read($, snapshot), time, lastColumns >= MEDIUM)
+  if (run !== generation) return
+  timer = $.clock.after(delay, () => {
+    void tick($, run).catch(() => undefined)
+  })
+}
+
+/**
+ * Start the clock afresh. Called at start and after each new reading, so a
+ * timer that was refused or lost comes back with the next turn.
+ */
+async function restartClock($: EngineInterface): Promise<void> {
+  timer?.cancel()
+  timer = undefined
+  generation += 1
+  if (!isInteractive) return
+  await tick($, generation)
 }
 
 async function remember($: EngineInterface, next: LimitSnapshot): Promise<void> {
-  figures = next
   await update($, snapshot, () => next)
-  await tick($)
+  await restartClock($)
 }
 
 export const register: Register = (on, options) => {
@@ -75,15 +84,26 @@ export const register: Register = (on, options) => {
   // Read the figures once at start and start the clock.
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    const usage = await $.session.usage()
-    await remember($, toSnapshot(usage.rateLimits, usage.context))
+    isInteractive = e.isInteractive
+    try {
+      const usage = await $.session.usage()
+      await remember($, toSnapshot(usage.rateLimits, usage.context))
+    } catch {
+      // The figures come with the next measurement.
+    }
     return started
   })
 
   // Claude Code pushes new figures after each turn and when a limit moves.
+  // Everything beneath runs first; a failure here never stops it.
   on('session.measure', async ($, e, next) => {
-    await remember($, toSnapshot(e.rateLimits, e.context))
-    return next(e)
+    const result = await next(e)
+    try {
+      await remember($, toSnapshot(e.rateLimits, e.context))
+    } catch {
+      // The row keeps the last figures until the next measurement.
+    }
+    return result
   })
 
   // Our row first, then Claude Code's own hint line below it.
@@ -94,6 +114,7 @@ export const register: Register = (on, options) => {
 
     const time = await read($, now)
     const columns = e.viewport?.columns ?? DEFAULT_COLUMNS
+    lastColumns = columns
     const segments = buildSegments(stored, time, lang, columns)
     const { Box, Text } = $.ui.resolve(e)
 
