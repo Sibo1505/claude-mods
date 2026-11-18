@@ -1,6 +1,6 @@
 {
   "name": "mod-manager",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Say \"install mods a, b\" in any session: Claude installs, updates or removes mods from this store the way each mod's README describes.",
   "author": {
     "name": "Sibo1505",

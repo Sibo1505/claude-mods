@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| Version | 0.1.0 |
+| Version | 0.1.1 |
 | Kind | Skill (no hooks module) |
 | Tested with | Claude Code 2.1.325 |
 | Platforms | Windows, macOS, Linux |
@@ -81,4 +81,5 @@ None. Mods you installed stay installed.
 
 ## Changelog
 
+- 0.1.1 (2026-11-16): Read the store's files with the file-reading tool by exact path; tell the user that a reinstalled mod starts with empty settings, and how to set them.
 - 0.1.0 (2026-11-16): First version.

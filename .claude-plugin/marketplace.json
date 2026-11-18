@@ -15,6 +15,11 @@
       "name": "limit-meter",
       "source": "./mods/limit-meter",
       "description": "Shows your 5-hour and weekly usage limits and the context fill under the prompt, with colored bars and the time until each limit resets."
+    },
+    {
+      "name": "voice-bar",
+      "source": "./mods/voice-bar",
+      "description": "Speak and send buttons above the prompt: dictate with Handy (offline speech-to-text), see at a glance whether it is listening, and send with one click."
     }
   ]
 }
